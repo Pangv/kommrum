@@ -10,6 +10,7 @@
   <!-- Firebase (compat, ohne Build-Step) -->
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
 
   <style>
     body {
@@ -51,57 +52,61 @@
 <div id="app" class="card">
   <h2>Humoristische Übernachtungsbuchung 😄</h2>
 
-  <label>Buchung auswählen</label>
-  <select v-model="selectedBookingId" @change="selectBooking">
-    <option value="">– Neue Buchung –</option>
-    <option v-for="b in bookings" :key="b.id" :value="b.id">
-      {{ b.from }} → {{ b.to }} ({{ b.guests }} Gäste)
-    </option>
-  </select>
+  <p v-if="!ready">🔐 Anmeldung läuft …</p>
 
-  <label>Von</label>
-  <input type="date" v-model="from" />
+  <div v-else>
+    <label>Buchung auswählen</label>
+    <select v-model="selectedBookingId" @change="selectBooking">
+      <option value="">– Neue Buchung –</option>
+      <option v-for="b in bookings" :key="b.id" :value="b.id">
+        {{ b.from }} → {{ b.to }} ({{ b.guests }} Gäste)
+      </option>
+    </select>
 
-  <label>Bis</label>
-  <input type="date" v-model="to" />
+    <label>Von</label>
+    <input type="date" v-model="from" />
 
-  <label>Anzahl Gäste</label>
-  <input type="number" min="1" v-model.number="guests" />
+    <label>Bis</label>
+    <input type="date" v-model="to" />
 
-  <label>Optionen</label>
-  <div class="options">
-    <label><input type="checkbox" v-model="options.breakfast"> Frühstück</label>
-    <label><input type="checkbox" v-model="options.wifi"> WLAN</label>
-    <label><input type="checkbox" v-model="options.restaurant"> Restaurantbesuche</label>
-    <label><input type="checkbox" v-model="options.animals"> Kaninchen & Vogelbeobachtung</label>
+    <label>Anzahl Gäste</label>
+    <input type="number" min="1" v-model.number="guests" />
+
+    <label>Optionen</label>
+    <div class="options">
+      <label><input type="checkbox" v-model="options.breakfast"> Frühstück</label>
+      <label><input type="checkbox" v-model="options.wifi"> WLAN</label>
+      <label><input type="checkbox" v-model="options.restaurant"> Restaurantbesuche</label>
+      <label><input type="checkbox" v-model="options.animals"> Kaninchen & Vogelbeobachtung</label>
+    </div>
+
+    <label>Goodies</label>
+    <div class="options">
+      <label><input type="checkbox" v-model="goodies.coffee"> Kaffee</label>
+      <label><input type="checkbox" v-model="goodies.gummies"> Gummibärchen</label>
+    </div>
+
+    <label>Sonderwünsche</label>
+    <textarea rows="3" v-model="notes"></textarea>
+
+    <button v-if="!selectedBookingId" @click="submit">
+      Buchung speichern
+    </button>
+
+    <button v-else @click="updateBooking">
+      Buchung aktualisieren
+    </button>
+
+    <button @click="newBooking">
+      Neue Buchung
+    </button>
+
+    <p v-if="success" style="margin-top:1rem;">✅ Gespeichert</p>
   </div>
-
-  <label>Goodies</label>
-  <div class="options">
-    <label><input type="checkbox" v-model="goodies.coffee"> Kaffee</label>
-    <label><input type="checkbox" v-model="goodies.gummies"> Gummibärchen</label>
-  </div>
-
-  <label>Sonderwünsche</label>
-  <textarea rows="3" v-model="notes"></textarea>
-
-  <button v-if="!selectedBookingId" @click="submit">
-    Buchung speichern
-  </button>
-
-  <button v-else @click="updateBooking">
-    Buchung aktualisieren
-  </button>
-
-  <button @click="newBooking">
-    Neue Buchung
-  </button>
-
-  <p v-if="success" style="margin-top:1rem;">✅ Gespeichert</p>
 </div>
 
 <script>
-  // Firebase Konfiguration (von dir bereitgestellt)
+  // Firebase Konfiguration
   const firebaseConfig = {
     apiKey: "AIzaSyCgvhypMbEMxcB27MSwMVGHXDinrDaL3KY",
     authDomain: "kommrum-895d1.firebaseapp.com",
@@ -112,16 +117,22 @@
   };
 
   firebase.initializeApp(firebaseConfig);
+
   const db = firebase.firestore();
+  const auth = firebase.auth();
 
   Vue.createApp({
     data() {
       return {
+        ready: false,
+
         bookings: [],
         selectedBookingId: null,
+
         from: "",
         to: "",
         guests: 1,
+
         options: {
           breakfast: false,
           wifi: false,
@@ -138,12 +149,22 @@
     },
 
     mounted() {
-      this.loadBookings();
+      auth.onAuthStateChanged(user => {
+        if (user) {
+          this.ready = true;
+          this.loadBookings();
+        }
+      });
+
+      auth.signInAnonymously().catch(err => {
+        alert("Auth-Fehler: " + err.message);
+      });
     },
 
     methods: {
       async loadBookings() {
-        const snap = await db.collection("bookings")
+        const snap = await db
+          .collection("bookings")
           .orderBy("createdAt", "desc")
           .get();
 
