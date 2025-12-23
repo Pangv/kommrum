@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <title>Übernachtungsbuchung 🛏️</title>
+
+  <!-- Vue 3 -->
+  <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+
+  <!-- Firebase (compat, ohne Build-Step) -->
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+
+  <style>
+    body {
+      font-family: system-ui, sans-serif;
+      background: #f7f7f7;
+      padding: 2rem;
+    }
+    .card {
+      max-width: 640px;
+      margin: auto;
+      background: white;
+      padding: 2rem;
+      border-radius: 12px;
+    }
+    label {
+      display: block;
+      margin-top: 1rem;
+      font-weight: 600;
+    }
+    input, textarea, select {
+      width: 100%;
+      padding: 0.5rem;
+      margin-top: 0.25rem;
+    }
+    .options label {
+      font-weight: normal;
+      margin-top: 0.25rem;
+    }
+    button {
+      margin-top: 1.2rem;
+      padding: 0.75rem;
+      width: 100%;
+      font-size: 1rem;
+    }
+  </style>
+</head>
+
+<body>
+<div id="app" class="card">
+  <h2>Humoristische Übernachtungsbuchung 😄</h2>
+
+  <label>Buchung auswählen</label>
+  <select v-model="selectedBookingId" @change="selectBooking">
+    <option value="">– Neue Buchung –</option>
+    <option v-for="b in bookings" :key="b.id" :value="b.id">
+      {{ b.from }} → {{ b.to }} ({{ b.guests }} Gäste)
+    </option>
+  </select>
+
+  <label>Von</label>
+  <input type="date" v-model="from" />
+
+  <label>Bis</label>
+  <input type="date" v-model="to" />
+
+  <label>Anzahl Gäste</label>
+  <input type="number" min="1" v-model.number="guests" />
+
+  <label>Optionen</label>
+  <div class="options">
+    <label><input type="checkbox" v-model="options.breakfast"> Frühstück</label>
+    <label><input type="checkbox" v-model="options.wifi"> WLAN</label>
+    <label><input type="checkbox" v-model="options.restaurant"> Restaurantbesuche</label>
+    <label><input type="checkbox" v-model="options.animals"> Kaninchen & Vogelbeobachtung</label>
+  </div>
+
+  <label>Goodies</label>
+  <div class="options">
+    <label><input type="checkbox" v-model="goodies.coffee"> Kaffee</label>
+    <label><input type="checkbox" v-model="goodies.gummies"> Gummibärchen</label>
+  </div>
+
+  <label>Sonderwünsche</label>
+  <textarea rows="3" v-model="notes"></textarea>
+
+  <button v-if="!selectedBookingId" @click="submit">
+    Buchung speichern
+  </button>
+
+  <button v-else @click="updateBooking">
+    Buchung aktualisieren
+  </button>
+
+  <button @click="newBooking">
+    Neue Buchung
+  </button>
+
+  <p v-if="success" style="margin-top:1rem;">✅ Gespeichert</p>
+</div>
+
+<script>
+  // Firebase Konfiguration (von dir bereitgestellt)
+  const firebaseConfig = {
+    apiKey: "AIzaSyCgvhypMbEMxcB27MSwMVGHXDinrDaL3KY",
+    authDomain: "kommrum-895d1.firebaseapp.com",
+    projectId: "kommrum-895d1",
+    storageBucket: "kommrum-895d1.firebasestorage.app",
+    messagingSenderId: "361792781378",
+    appId: "1:361792781378:web:3f1fa10e754da406fb41db"
+  };
+
+  firebase.initializeApp(firebaseConfig);
+  const db = firebase.firestore();
+
+  Vue.createApp({
+    data() {
+      return {
+        bookings: [],
+        selectedBookingId: null,
+        from: "",
+        to: "",
+        guests: 1,
+        options: {
+          breakfast: false,
+          wifi: false,
+          restaurant: false,
+          animals: false
+        },
+        goodies: {
+          coffee: false,
+          gummies: false
+        },
+        notes: "",
+        success: false
+      };
+    },
+
+    mounted() {
+      this.loadBookings();
+    },
+
+    methods: {
+      async loadBookings() {
+        const snap = await db.collection("bookings")
+          .orderBy("createdAt", "desc")
+          .get();
+
+        this.bookings = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      },
+
+      selectBooking() {
+        const b = this.bookings.find(b => b.id === this.selectedBookingId);
+        if (!b) return;
+
+        this.from = b.from;
+        this.to = b.to;
+        this.guests = b.guests;
+        this.options = { ...b.options };
+        this.goodies = { ...b.goodies };
+        this.notes = b.notes || "";
+      },
+
+      async submit() {
+        if (!this.from || !this.to) {
+          alert("Bitte Zeitraum auswählen");
+          return;
+        }
+
+        await db.collection("bookings").add({
+          from: this.from,
+          to: this.to,
+          guests: this.guests,
+          options: this.options,
+          goodies: this.goodies,
+          notes: this.notes,
+          createdAt: firebase.firestore.FieldValue.serverTimestamp()
+        });
+
+        this.success = true;
+        this.newBooking();
+        this.loadBookings();
+      },
+
+      async updateBooking() {
+        await db.collection("bookings")
+          .doc(this.selectedBookingId)
+          .update({
+            from: this.from,
+            to: this.to,
+            guests: this.guests,
+            options: this.options,
+            goodies: this.goodies,
+            notes: this.notes
+          });
+
+        this.success = true;
+        this.loadBookings();
+      },
+
+      newBooking() {
+        this.selectedBookingId = null;
+        this.from = "";
+        this.to = "";
+        this.guests = 1;
+        this.options = { breakfast:false, wifi:false, restaurant:false, animals:false };
+        this.goodies = { coffee:false, gummies:false };
+        this.notes = "";
+      }
+    }
+  }).mount("#app");
+</script>
+</body>
+</html>
